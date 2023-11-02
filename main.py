@@ -1,5 +1,5 @@
 import pandas as pd
-from multiprocessing import Pool
+import numpy as np
 import sys
 
 
@@ -89,6 +89,8 @@ def process_bucket(trade_quote_df):
 
 
 def rank_futures(prefix, values):
+    ## data quality check (TODO - delist_date >= trade_date)
+
     values['series'] = prefix + 'c' + values['delist_date'].rank().astype(int).astype(str)
     values.sort_values('series', inplace=True)
     values.set_index('series', inplace=True)
@@ -98,7 +100,6 @@ def rank_futures(prefix, values):
 def continuous_futures():
     future_ref_file_path = '/Users/rabbish/Downloads/future_ref.csv'
     future_price_file_path = '/Users/rabbish/Downloads/future_price.csv'
-
     fut_ref = pd.read_csv(future_ref_file_path)
     fut_trd = pd.read_csv(future_price_file_path)
 
@@ -107,14 +108,16 @@ def continuous_futures():
     if_ref = fut_ref[fut_ref['fut_code'] == 'IF'].sort_values('list_date', ascending=False)
     if_ref_trd = pd.merge(if_ref, fut_trd, on='ts_code', how='left')
 
-    if_ref_trd = if_ref_trd[if_ref_trd['trade_date'] >= 20200225]
-
     if_series = if_ref_trd.groupby('trade_date').apply(lambda x: rank_futures('IF', x))
     if_series.reset_index(inplace=True)
-    if_px_series = if_series.pivot(index='trade_date', columns='series', values='close')
-    if_ref_series = if_series.pivot(index='trade_date', columns='series', values='ts_code')
-    if_vol_series = if_series.pivot(index='trade_date', columns='series', values='vol')
-    if_oi_series = if_series.pivot(index='trade_date', columns='series', values='oi')
+    if_px = if_series.pivot(index='trade_date', columns='series', values='close')
+    if_ref = if_series.pivot(index='trade_date', columns='series', values='ts_code')
+    if_vol = if_series.pivot(index='trade_date', columns='series', values='vol')
+
+    if_roll_dates = if_ref['IFc1']!=if_ref['IFc1'].shift(1)
+    if_roll_closes = if_roll_dates.shift(-1).fillna(False)
+
+    if_roll_mult = if_px[if_roll_dates]['IFc2'] / if_px[if_roll_dates]['IFc1']
 
     # enumerate for each future's list date
     for (n, new_future), (o, old_future) in zip(if_ref[:-1].iterrows(), if_ref[1:].iterrows()):
