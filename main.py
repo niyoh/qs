@@ -88,34 +88,48 @@ def process_bucket(trade_quote_df):
             'bid_liquidity_taken': bid_liquidity_taken, 'ask_liquidity_taken': ask_liquidity_taken}
 
 
+def rank_futures(prefix, values):
+    values['series'] = prefix + 'c' + values['delist_date'].rank().astype(int).astype(str)
+    values.sort_values('series', inplace=True)
+    values.set_index('series', inplace=True)
+    values.drop('trade_date', axis=1, inplace=True)
+    return values.iloc[:3]
+
 def continuous_futures():
     future_ref_file_path = '/Users/rabbish/Downloads/future_ref.csv'
     future_price_file_path = '/Users/rabbish/Downloads/future_price.csv'
 
-    future_ref_df = pd.read_csv(future_ref_file_path)
-    future_price_df = pd.read_csv(future_price_file_path)
+    fut_ref = pd.read_csv(future_ref_file_path)
+    fut_trd = pd.read_csv(future_price_file_path)
 
-    future_ref_df.set_index('ts_code', inplace=True)
-    future_price_df.set_index('ts_code', inplace=True)
-    future_price_df = future_price_df.sort_values('trade_date', ascending=False)
+    fut_trd = fut_trd.sort_values('trade_date', ascending=False)
 
-    if_futures_ref_df = future_ref_df[future_ref_df['fut_code'] == 'IF'].sort_values('list_date', ascending=False)
-    if_future_ref_price_df = pd.merge(if_futures_ref_df, future_price_df, on='ts_code', how='left')
+    if_ref = fut_ref[fut_ref['fut_code'] == 'IF'].sort_values('list_date', ascending=False)
+    if_ref_trd = pd.merge(if_ref, fut_trd, on='ts_code', how='left')
+
+    if_ref_trd = if_ref_trd[if_ref_trd['trade_date'] >= 20200225]
+
+    if_series = if_ref_trd.groupby('trade_date').apply(lambda x: rank_futures('IF', x))
+    if_series.reset_index(inplace=True)
+    if_px_series = if_series.pivot(index='trade_date', columns='series', values='close')
+    if_ref_series = if_series.pivot(index='trade_date', columns='series', values='ts_code')
+    if_vol_series = if_series.pivot(index='trade_date', columns='series', values='vol')
+    if_oi_series = if_series.pivot(index='trade_date', columns='series', values='oi')
 
     # enumerate for each future's list date
-    for (n, new_future), (o, old_future) in zip(if_futures_ref_df[:-1].iterrows(), if_futures_ref_df[1:].iterrows()):
+    for (n, new_future), (o, old_future) in zip(if_ref[:-1].iterrows(), if_ref[1:].iterrows()):
         new_list_date = new_future['list_date']
 
-        new_future_price_df = future_price_df.loc[n]
+        new_future_price_df = fut_trd.loc[n]
         new_future_close = new_future_price_df.loc[new_future_price_df.trade_date == new_list_date]['close'].iloc[0]
 
-        old_future_price_df = future_price_df.loc[o]
+        old_future_price_df = fut_trd.loc[o]
         old_future_close = old_future_price_df.loc[old_future_price_df.trade_date == new_list_date]['close'].iloc[0]
 
         ratio = new_future_close / old_future_close
 
-        if_future_ref_price_df = if_future_ref_price_df[o:]['close'] * ratio
-        print(if_future_ref_price_df[o:])
+        if_ref_trd = if_ref_trd[o:]['close'] * ratio
+        print(if_ref_trd[o:])
 
 
 # Press the green button in the gutter to run the script.
