@@ -1,5 +1,5 @@
 import pandas as pd
-import sys
+import numpy as np
 
 
 def equity_tick_data():
@@ -23,58 +23,65 @@ def equity_tick_data():
     taq = pd.concat([trd, qte])
     taq = taq.sort_values(['time', 'type'])
 
-    # Group the DataFrame into 5-minute buckets
-    # Calculate VWAP price and TWAP price
-    price_size_agg = taq.resample('5T', label='right').agg({'price': 'ohlc', 'volume': 'sum'})
-    price_size_agg['vwap'] = price_size_agg.apply(
-        lambda x: (x['price']['close'] * x['volume']).sum() / x['volume'].sum(), axis=1)
-    price_size_agg['twap'] = price_size_agg['price']['close'].mean()
+    taq = taq[taq.index >= pd.to_datetime('09:30:00.000', format='%H:%M:%S.%f')]
 
-    liquidity_agg = taq.resample('5T', label='right').apply(process_bucket)
+    # Group into 5-minute buckets
+    # Summary
+    ohlc_agg = taq.resample('5T', label='right').agg({'price': 'ohlc', 'volume': 'sum'})
+    ohlc_agg['vwap'] = ohlc_agg.apply(lambda x: (x['price']['close'] * x['volume']).sum() / x['volume'].sum(), axis=1)
+    ohlc_agg['twap'] = ohlc_agg['price']['close'].mean()
+    ohlc_agg['n_trd'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(lambda x: len(x[x['type'] == 'trade']))
+    ohlc_agg['n_quo'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(lambda x: len(x[x['type'] == 'quote']))
+    ohlc_agg['bid_price'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
+        lambda x: x['bid_price'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
+    ohlc_agg['bid_size'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
+        lambda x: x['bid_size'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
+    ohlc_agg['ask_price'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
+        lambda x: x['ask_price'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
+    ohlc_agg['ask_size'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
+        lambda x: x['ask_size'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
 
-    print(liquidity_agg)
+    # Liquidity Flow Data
+    liq_agg = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(process_bucket)
+
+    print(ohlc_agg)
+    print(liq_agg)
 
 
-def process_bucket(trade_quote):
-    # Store bid price to bid size mapping
-    bid_liq_add = {}
-    ask_liq_add = {}
-    bid_liq_taken = {}
-    ask_liq_taken = {}
-    bid_price = 0
-    ask_price = sys.maxsize
+def process_bucket(taq):
+    # Add Liquidity
 
-    bid_liq_add = trade_quote.groupby('bid_price').agg({'bid_size': 'sum'})
-    ask_liq_add = trade_quote.groupby('ask_price').agg({'ask_size': 'sum'})
-    liq_add = pd.merge(bid_liq_add, ask_liq_add, left_index=True, right_index=True, how='outer')
+    liq_add_bid = taq.groupby('bid_price').agg({'bid_size': 'sum'})
+    liq_add_ask = taq.groupby('ask_price').agg({'ask_size': 'sum'})
 
-    trade_quote['last_bid_price'] = trade_quote['bid_price'].shift(1)
-    trade_quote['last_ask_price'] = trade_quote['ask_price'].shift(1)
+    liq_add_bid.columns = ['add_bid_size']
+    liq_add_ask.columns = ['add_ask_size']
+    liq_add = pd.merge(liq_add_bid, liq_add_ask, left_index=True, right_index=True, how='outer').fillna(0)
 
-    # for index, row in trade_quote.iterrows():
-    #     elif row['type'] == 'trade':
-    #         traded_price = row['price']
-    #         traded_size = row['volume']
-    #
-    #         if traded_price == bid_price and traded_price == ask_price:
-    #             print('unknown direction')
-    #
-    #         elif traded_price <= bid_price:
-    #             # buy: bid liquidity is taken
-    #             if traded_price in bid_liq_taken:
-    #                 bid_liq_taken[traded_price] += traded_size
-    #             else:
-    #                 bid_liq_taken[traded_price] = traded_size
-    #
-    #         elif traded_price >= ask_price:
-    #             # sell: ask liquidity is taken
-    #             if traded_price in ask_liq_taken:
-    #                 ask_liq_taken[traded_price] += traded_size
-    #             else:
-    #                 ask_liq_taken[traded_price] = traded_size
+    # Take Liquidity
 
-    return {'bid_liq_add': bid_liq_add, 'ask_liq_add': ask_liq_add,
-            'bid_liq_taken': bid_liq_taken, 'ask_liq_taken': ask_liq_taken}
+    taq['last_bid_price'] = taq['bid_price'].shift(1).ffill()
+    taq['last_ask_price'] = taq['ask_price'].shift(1).ffill()
+    taq['last_mid_price'] = (taq['last_bid_price'] + taq['last_ask_price']) / 2
+
+    # traded price >= best ask (~mid) indicates a buy trade
+    # traded price <= best bid (~mid) indicates a sell trade
+    taq['direction'] = 'unknown'
+    taq.loc[(taq['price'] < taq['last_mid_price']), 'direction'] = 'sell'
+    taq.loc[(taq['price'] >= taq['last_mid_price']), 'direction'] = 'buy'
+    liq_take = taq[~taq['price'].isna()]
+
+    liq_take_buy = liq_take[liq_take['direction'] == 'buy'].groupby('price').agg({'volume': 'sum'})
+    liq_take_sell = liq_take[liq_take['direction'] == 'sell'].groupby('price').agg({'volume': 'sum'})
+
+    liq_take_buy.columns = ['take_buy_size']
+    liq_take_sell.columns = ['take_sell_size']
+    liq_take = pd.merge(liq_take_buy, liq_take_sell, left_index=True, right_index=True, how='outer').fillna(0)
+
+    # Merge
+    liq = pd.merge(liq_add, liq_take, left_index=True, right_index=True, how='outer').fillna(0)
+
+    return liq
 
 
 if __name__ == '__main__':
