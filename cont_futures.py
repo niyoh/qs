@@ -1,20 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-
-def rank_nearest_expiry_futures(prefix, values):
-    ## data quality check (TODO - delist_date >= trade_date)
-    values['series'] = prefix + values['delist_date'].rank().astype(int).astype(str)
-    values.sort_values('series', inplace=True)
-    values.set_index('series', inplace=True)
-    values.drop('trade_date', axis=1, inplace=True)
-    return values.iloc[:3]
-
-
-def rank_most_active_futures(prefix, values):
-    values['series']
-
-
 def continuous_futures():
     future_ref_file_path = '/Users/rabbish/Downloads/future_ref.csv'
     future_price_file_path = '/Users/rabbish/Downloads/future_price.csv'
