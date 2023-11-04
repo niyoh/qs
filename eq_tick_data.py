@@ -23,8 +23,6 @@ def equity_tick_data():
     taq = pd.concat([trd, qte])
     taq = taq.sort_values(['time', 'type'])
 
-    taq = taq[taq.index >= pd.to_datetime('09:30:00.000', format='%H:%M:%S.%f')]
-
     # Group into 5-minute buckets
     # Summary
     ohlc_agg = taq.resample('5T', label='right').agg({'price': 'ohlc', 'volume': 'sum'})
