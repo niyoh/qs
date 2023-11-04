@@ -10,6 +10,7 @@ def rank_nearest_expiry_futures(prefix, values):
     values.drop('trade_date', axis=1, inplace=True)
     return values.iloc[:3]
 
+
 def rank_most_active_futures(prefix, values):
     values['series']
 
@@ -20,38 +21,79 @@ def continuous_futures():
     fut_ref = pd.read_csv(future_ref_file_path)
     fut_trd = pd.read_csv(future_price_file_path)
 
-    fut_trd = fut_trd.sort_values('trade_date', ascending=False)
     fut_trd['trade_date'] = pd.to_datetime(fut_trd['trade_date'], format='%Y%m%d')
+    fut_ref['list_date'] = pd.to_datetime(fut_ref['list_date'], format='%Y%m%d')
+    fut_ref['delist_date'] = pd.to_datetime(fut_ref['delist_date'], format='%Y%m%d')
 
-    if_code = fut_ref[fut_ref['fut_code'] == 'IF'].sort_values('list_date', ascending=False)
-    if_ref_trd = pd.merge(if_code, fut_trd, on='ts_code')
+    if_ref = fut_ref[fut_ref['fut_code'] == 'IF'].sort_values('list_date', ascending=False)
+    if_ref_trd = pd.merge(if_ref, fut_trd, on='ts_code').sort_values('trade_date')
+    if_ref_trd['delist_mth'] = if_ref_trd['delist_date'].dt.month
 
-    # rank c1,c2,c3 futures for each trade date
-    if_series = if_ref_trd.groupby('trade_date').apply(lambda x: rank_nearest_expiry_futures('IFc', x))
+    # rank c1
+    if_c1 = if_ref_trd.groupby('trade_date').apply(lambda x: x.loc[x['delist_date'].idxmin()])
 
-    # pivot c1,c2,c3 series of codes & prices
-    if_series.reset_index(inplace=True)
-    if_px = if_series.pivot(index='trade_date', columns='series', values='close')
-    if_code = if_series.pivot(index='trade_date', columns='series', values='ts_code')
+    # (exclude outliers when delist_date is too far away from trade_date, happening at initial portion)
+    trd_c1_gap = pd.DataFrame(if_c1['delist_date'] - if_c1['trade_date'], columns=['gap'])
+    trd_c1_gap_m = trd_c1_gap['gap'].mean()
+    trd_c1_gap_sd = trd_c1_gap['gap'].std()
+    trd_c1_gap['zscore'] = trd_c1_gap.apply(lambda x: abs(x - trd_c1_gap_m) / trd_c1_gap_sd)
+    if_c1 = if_c1[trd_c1_gap['zscore'] <= 1.5]
 
-    # enumerate last close date before roll
-    if_roll_dates = if_code['IFc1'] != if_code['IFc1'].shift(1)
-    if_roll_closes = if_roll_dates.shift(-1).fillna(False)
+    # update c1 label in main ref/trades
+    if_c1['series'] = 'c1'
+    if_c1['c1_mth'] = if_c1['delist_date'].dt.month
+    if_ref_trd = if_ref_trd[if_ref_trd['trade_date'].isin(if_c1.index)]
+    if_ref_trd = pd.merge(if_ref_trd, if_c1[['ts_code', 'series', 'c1_mth']].reset_index(),
+                          on=['trade_date', 'ts_code'],
+                          how='left')
+    if_ref_trd.sort_values(['trade_date', 'delist_date'], inplace=True)
+    if_ref_trd['c1_mth'].ffill(inplace=True)
+    if_ref_trd['c1_plus_mth'] = (if_ref_trd['delist_mth'] - if_ref_trd['c1_mth']) % 12
 
-    # calc multipler before each roll, cumulatively adjust for historical dates
-    if_roll_mult = if_px[if_roll_closes]['IFc2'] / if_px[if_roll_closes]['IFc1']
-    if_mult = if_roll_mult[::-1].cumprod()[::-1]
-    if_mult = if_mult.reindex(if_px.index).bfill().fillna(1)
+    # rank c2,c3 - assuming c2~=c1+1mth, c3~=c1+2mth
+    for n in range(1, 3):
+        if_ref_trd.loc[if_ref_trd['c1_plus_mth'] == n, 'series'] = f'c{n + 1}'
+    if_ref_trd = if_ref_trd[~if_ref_trd['series'].isna()]
 
-    # adjust for IFc1
-    if_px['IFc1_adj'] = if_px['IFc1'] * if_mult
+    # tables: 1) trade_date -> px  2) trade_date -> ref
+    if_px = if_ref_trd.pivot(index='trade_date', columns='series', values='close')
+    if_ref = if_ref_trd.pivot(index='trade_date', columns='series', values='ts_code')
 
-    plt.plot(if_px.index, if_px['IFc1_adj'], color='green')
-    plt.plot(if_px.index, if_px['IFc1'], color='blue')
-    for roll_date in if_roll_dates[if_roll_dates].index:
-        plt.scatter(x=roll_date, y=if_px.loc[if_px.index == roll_date, 'IFc1_adj'], marker='^', color='red', zorder=5)
-    plt.xlabel('Trade Dates')
-    plt.ylabel('Price')
+    # forward fill price for gaps in c2,c3
+    if_px.columns.map(lambda x: if_px[x].ffill(inplace=True))
+
+    # historical adjustment & visualize
+    if_px_adj = if_px.copy()
+    for i in range(0, len(if_px.columns)):
+        n = if_px.columns[i]
+
+        if_px_n = if_px[[n]].copy()
+        if_px_n['last'] = if_px_n[n].shift(1)
+
+        # enumerate last close date before roll
+        if_ref_n = if_ref[[n]].copy()
+        if_ref_n[n].ffill(inplace=True)
+        if_roll_dates = if_ref_n[n] != if_ref_n[n].shift(1)
+        if_roll_closes = if_roll_dates.shift(-1).fillna(False)
+
+        # calc multiplier before each roll, cumulatively adjust for historical dates
+        if_roll_mult = if_px_n[if_roll_closes][n] / if_px_n[if_roll_closes]['last']
+        if_mult = if_roll_mult[::-1].cumprod()[::-1]
+        if_mult = if_mult.reindex(if_px.index).bfill().fillna(1)
+
+        # adjust
+        if_px_adj[n] = if_px[n] * if_mult
+
+        # visualize
+        plt.subplot(len(if_px.columns), 1, i + 1)
+        plt.title(f'IF{n}')
+        plt.plot(if_px.index, if_px_adj[n], color='green')
+        plt.plot(if_px.index, if_px[n], color='grey')
+        for roll_date in if_roll_dates[if_roll_dates].index:
+            plt.scatter(x=roll_date, y=if_px_adj.loc[if_px.index == roll_date, n], marker='^', color='red', zorder=5)
+        plt.xlabel('Trade Dates')
+        plt.ylabel('Price')
+
     plt.show()
 
 
