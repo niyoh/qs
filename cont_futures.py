@@ -2,13 +2,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def rank_futures(prefix, values):
+def rank_nearest_expiry_futures(prefix, values):
     ## data quality check (TODO - delist_date >= trade_date)
-    values['series'] = prefix + 'c' + values['delist_date'].rank().astype(int).astype(str)
+    values['series'] = prefix + values['delist_date'].rank().astype(int).astype(str)
     values.sort_values('series', inplace=True)
     values.set_index('series', inplace=True)
     values.drop('trade_date', axis=1, inplace=True)
     return values.iloc[:3]
+
+def rank_most_active_futures(prefix, values):
+    values['series']
 
 
 def continuous_futures():
@@ -24,7 +27,7 @@ def continuous_futures():
     if_ref_trd = pd.merge(if_code, fut_trd, on='ts_code')
 
     # rank c1,c2,c3 futures for each trade date
-    if_series = if_ref_trd.groupby('trade_date').apply(lambda x: rank_futures('IF', x))
+    if_series = if_ref_trd.groupby('trade_date').apply(lambda x: rank_nearest_expiry_futures('IFc', x))
 
     # pivot c1,c2,c3 series of codes & prices
     if_series.reset_index(inplace=True)
@@ -40,7 +43,7 @@ def continuous_futures():
     if_mult = if_roll_mult[::-1].cumprod()[::-1]
     if_mult = if_mult.reindex(if_px.index).bfill().fillna(1)
 
-    # adjust for c1
+    # adjust for IFc1
     if_px['IFc1_adj'] = if_px['IFc1'] * if_mult
 
     plt.plot(if_px.index, if_px['IFc1_adj'], color='green')
