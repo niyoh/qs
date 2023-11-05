@@ -3,6 +3,9 @@ from airflow import DAG
 from airflow.utils.dates import days_ago
 from airflow.operators.python import PythonOperator
 from airflow.operators.empty import EmptyOperator
+import sys
+
+sys.path.append('../../')
 import ust_scraper
 
 import os
