@@ -65,10 +65,6 @@ def ust_scraper():
     conn.close()
 
 
-def sec_details_url(cusip):
-    return f'https://www.treasurydirect.gov/TA_WS/securities/jqsearch?format=json&cusipoperator=and&filtervalue0={cusip}&filtercondition0=CONTAINS&filteroperator0=0&filterdatafield0=cusip&filterGroups%5B0%5D%5Bfield%5D=cusip&filterGroups%5B0%5D%5Bfilters%5D%5B0%5D%5Blabel%5D=912797GM3&filterGroups%5B0%5D%5Bfilters%5D%5B0%5D%5Bvalue%5D=912797GM3&filterGroups%5B0%5D%5Bfilters%5D%5B0%5D%5Bcondition%5D=CONTAINS&filterGroups%5B0%5D%5Bfilters%5D%5B0%5D%5Boperator%5D=and&filterGroups%5B0%5D%5Bfilters%5D%5B0%5D%5Bfield%5D=cusip&filterGroups%5B0%5D%5Bfilters%5D%5B0%5D%5Btype%5D=stringfilter&filterscount=1&groupscount=0&pagenum=0&pagesize=100&recordstartindex=0&recordendindex=100'
-
-
 def auctioned_url(type):
     return f'https://www.treasurydirect.gov/TA_WS/securities/auctioned?format=json&limitByTerm=true&type={type}&days=720'
 
