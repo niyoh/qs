@@ -3,6 +3,9 @@
 ## 1) Equity Tick Data
 
 ### Liquidity Flow Data:
+- outer-join trade and quotes in same timeseries
+- determine trade direction by comparing traded_price vs last_mid_quote (traded_price >= best_ask(or mid) means buying, traded_price <= best_bid(or mid) means selling)
+  
 - grouped by time-bucket & price
 - liquidity add: add_bid_size & add_ask_size
 - liquidity take: take_buy_size & take_ask_size
