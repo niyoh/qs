@@ -1,48 +1,33 @@
 import pandas as pd
-import numpy as np
 
 
-def equity_tick_data():
-    trade_file_path = '/Users/rabbish/Downloads/trade.csv'
-    quote_file_path = '/Users/rabbish/Downloads/quote.csv'
+def agg_bin_data(trd: pd.DataFrame, qte: pd.DataFrame):
+    trd_grouped = trd.resample('5T', label='right')
+    trd_agg = trd_grouped.agg({'price': 'ohlc', 'volume': 'sum'}).droplevel(0, 1)
+    trd_agg['vwap'] = trd_grouped.apply(lambda x: (x['price'] * x['volume']).sum() / x['volume'].sum())
+    trd_agg['twap'] = trd_grouped['price'].mean()
+    trd_agg['n_trd'] = trd_grouped['price'].count()
 
-    trd = pd.read_csv(trade_file_path)
-    trd['time'] = pd.to_datetime(trd['time'], format='%H:%M:%S.%f')
+    qte_grouped = qte.resample('5T', label='right')
+    qte_agg = qte_grouped[['bid_price', 'bid_size', 'ask_price', 'ask_size']].last()
+    qte_agg['n_quo'] = qte_grouped['bid_price'].count().values
 
-    qte = pd.read_csv(quote_file_path)
-    qte['time'] = pd.to_datetime(qte['time'], format='%H:%M:%S.%f')
+    ohlc_agg = pd.merge(trd_agg, qte_agg, left_index=True, right_index=True, how='outer')
+    return ohlc_agg
 
-    trd.set_index('time', inplace=True)
-    qte.set_index('time', inplace=True)
 
+def liq_flow_data(trd: pd.DataFrame, qte: pd.DataFrame):
     # Rearrange Quotes and Trades into single time-series
     #   - for trade and quote happening at same millisecond, deliberately put trade earlier and put quote later
     #   - to make sure trade is always behind the last quote in earlier milliseconds
     taq = pd.concat([trd.assign(type='trade'), qte.assign(type='quote')])
     taq = taq.sort_values(['time', 'type'])
 
-    # Group into 5-minute buckets
-
-    # Aggregate Bin Data
-    trd_grouped = trd.resample('5T', label='right')
-    qte_grouped = qte.resample('5T', label='right')
-    trd_agg = trd_grouped.agg({'price': 'ohlc', 'volume': 'sum'}).droplevel(0, 1)
-    trd_agg['vwap'] = trd_grouped.apply(lambda x: (x['price'] * x['volume']).sum() / x['volume'].sum())
-    trd_agg['twap'] = trd_grouped['price'].mean()
-    trd_agg['n_trd'] = trd_grouped['price'].count()
-    qte_agg = qte_grouped[['bid_price', 'bid_size', 'ask_price', 'ask_size']].last()
-    qte_agg['n_quo'] = qte_grouped['bid_price'].count().values
-
-    ohlc_agg = pd.merge(trd_agg, qte_agg, left_index=True, right_index=True, how='outer')
-
-    # Liquidity Flow Data
-    liq_agg = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(process_bucket)
-
-    print(ohlc_agg)
-    print(liq_agg)
+    liq_agg = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(liq_flow_data_by_bucket)
+    return liq_agg
 
 
-def process_bucket(taq):
+def liq_flow_data_by_bucket(taq):
     # Add Liquidity
 
     liq_add_bid = taq.groupby('bid_price').agg({'bid_size': 'sum'}).rename(columns={'bid_size': 'add_bid_size'})
@@ -77,4 +62,20 @@ def process_bucket(taq):
 
 
 if __name__ == '__main__':
-    equity_tick_data()
+    trade_file_path = '/Users/rabbish/Downloads/trade.csv'
+    quote_file_path = '/Users/rabbish/Downloads/quote.csv'
+
+    trd = pd.read_csv(trade_file_path)
+    trd['time'] = pd.to_datetime(trd['time'], format='%H:%M:%S.%f')
+
+    qte = pd.read_csv(quote_file_path)
+    qte['time'] = pd.to_datetime(qte['time'], format='%H:%M:%S.%f')
+
+    trd.set_index('time', inplace=True)
+    qte.set_index('time', inplace=True)
+
+    liq_agg = liq_flow_data(trd, qte)
+    ohlc_agg = agg_bin_data(trd, qte)
+
+    print(ohlc_agg)
+    print(liq_agg)
