@@ -1,10 +1,11 @@
 import pandas as pd
+import numpy as np
 
 
 def agg_bin_data(trd: pd.DataFrame, qte: pd.DataFrame):
     trd_grouped = trd.resample('5T', label='right')
-    trd_agg = trd_grouped.agg({'price': 'ohlc', 'volume': 'sum'}).droplevel(0, 1)
-    trd_agg['vwap'] = trd_grouped.apply(lambda x: (x['price'] * x['volume']).sum() / x['volume'].sum())
+    trd_agg = trd_grouped.agg({'price': 'ohlc', 'volume': 'sum'}).droplevel(0, 1)  # drop two level index
+    trd_agg['vwap'] = trd_grouped.apply(lambda x: vwap(x['price'].values, x['volume'].values))
     trd_agg['twap'] = trd_grouped['price'].mean()
     trd_agg['n_trd'] = trd_grouped['price'].count()
 
@@ -14,6 +15,11 @@ def agg_bin_data(trd: pd.DataFrame, qte: pd.DataFrame):
 
     ohlc_agg = pd.merge(trd_agg, qte_agg, left_index=True, right_index=True, how='outer')
     return ohlc_agg
+
+
+def vwap(px, vol):
+    vol_s = np.sum(vol)
+    return np.nan if vol_s == 0 else (np.sum(px * vol) / vol_s)
 
 
 def liq_flow_data(trd: pd.DataFrame, qte: pd.DataFrame):
