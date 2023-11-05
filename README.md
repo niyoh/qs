@@ -8,7 +8,7 @@
   
 - grouped by time-bucket & price
 - liquidity add: add_bid_size & add_ask_size
-- liquidity take: take_buy_size & take_ask_size
+- liquidity take: take_buy_size & take_sell_size
   
 <img width="724" alt="image" src="https://github.com/niyoh/qs/assets/6595331/56252075-c036-4ed5-bd38-45de2b607e6a">
 
