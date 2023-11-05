@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 import sqlite3
 from datetime import datetime
+from io import StringIO
 
 Types = ['Bill', 'Note', 'Bond', 'TIPS', 'FRN']
 Auc_Table_Cols = ['version', 'type', 'term', 'reopening', 'cusip', 'issueDate', 'highYield', 'highDiscountMargin',
@@ -13,7 +14,7 @@ Upc_Table_Cols = ['version', 'type', 'term', 'reopening', 'cusip', 'offeringAmou
 def ust_scraper():
     writetime = datetime.utcnow()
 
-    conn = sqlite3.connect('../ust.db')
+    conn = sqlite3.connect('/tmp/ust.db')
     create_table_query = '''
         CREATE TABLE IF NOT EXISTS auctioned (
             "version" TIMESTAMP,
@@ -90,7 +91,7 @@ def scrape_auctioned(type):
     if response.status_code != 200:
         raise Exception(f'unable to scrape auctioned type: {type}')
 
-    auc = pd.read_json(response.text)
+    auc = pd.read_json(StringIO(response.text))
     auc['blob'] = response.text
     return auc
 
@@ -100,7 +101,7 @@ def scrape_upcoming(type):
     if response.status_code != 200:
         raise Exception(f'unable to scrape upcoming type: {type}')
 
-    upc = pd.read_json(response.text)
+    upc = pd.read_json(StringIO(response.text))
     upc['blob'] = response.text
     return upc
 
