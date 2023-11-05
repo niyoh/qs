@@ -18,27 +18,19 @@ def equity_tick_data():
     # Rearrange Quotes and Trades into single time-series
     #   - for trade and quote happening at same millisecond, deliberately put trade earlier and put quote later
     #   - to make sure trade is always behind the last quote in earlier milliseconds
-    trd['type'] = 'trade'
-    qte['type'] = 'quote'
-    taq = pd.concat([trd, qte])
+    taq = pd.concat([trd.assign(type='trade'), qte.assign(type='quote')])
     taq = taq.sort_values(['time', 'type'])
 
     # Group into 5-minute buckets
     # Summary
-    ohlc_agg = taq.resample('5T', label='right').agg({'price': 'ohlc', 'volume': 'sum'})
+    ohlc_agg = trd.resample('5T', label='right').agg({'price': 'ohlc', 'volume': 'sum'})
     ohlc_agg['vwap'] = ohlc_agg.apply(lambda x: (x['price']['close'] * x['volume']).sum() / x['volume'].sum(), axis=1)
     ohlc_agg['twap'] = ohlc_agg['price']['close'].mean()
-    ohlc_agg['n_trd'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(lambda x: len(x[x['type'] == 'trade']))
-    ohlc_agg['n_quo'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(lambda x: len(x[x['type'] == 'quote']))
-    ohlc_agg['bid_price'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
-        lambda x: x['bid_price'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
-    ohlc_agg['bid_size'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
-        lambda x: x['bid_size'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
-    ohlc_agg['ask_price'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
-        lambda x: x['ask_price'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
-    ohlc_agg['ask_size'] = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(
-        lambda x: x['ask_size'].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
-
+    ohlc_agg['n_trd'] = trd.groupby(pd.Grouper(freq='5T', label='right'))['price'].count()
+    ohlc_agg['n_quo'] = qte.groupby(pd.Grouper(freq='5T', label='right'))['bid_price'].count()
+    for field in ['bid_price', 'bid_size', 'ask_price', 'ask_size']:
+        ohlc_agg[field] = qte.groupby(pd.Grouper(freq='5T', label='right')).apply(
+            lambda x: x[field].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
     # Liquidity Flow Data
     liq_agg = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(process_bucket)
 
@@ -49,11 +41,9 @@ def equity_tick_data():
 def process_bucket(taq):
     # Add Liquidity
 
-    liq_add_bid = taq.groupby('bid_price').agg({'bid_size': 'sum'})
-    liq_add_ask = taq.groupby('ask_price').agg({'ask_size': 'sum'})
+    liq_add_bid = taq.groupby('bid_price').agg({'bid_size': 'sum'}).rename(columns={'bid_size': 'add_bid_size'})
+    liq_add_ask = taq.groupby('ask_price').agg({'ask_size': 'sum'}).rename(columns={'ask_size': 'add_ask_size'})
 
-    liq_add_bid.columns = ['add_bid_size']
-    liq_add_ask.columns = ['add_ask_size']
     liq_add = pd.merge(liq_add_bid, liq_add_ask, left_index=True, right_index=True, how='outer').fillna(0)
 
     # Take Liquidity
@@ -69,11 +59,11 @@ def process_bucket(taq):
     taq.loc[(taq['price'] >= taq['last_mid_price']), 'direction'] = 'buy'
     liq_take = taq[~taq['price'].isna()]
 
-    liq_take_buy = liq_take[liq_take['direction'] == 'buy'].groupby('price').agg({'volume': 'sum'})
-    liq_take_sell = liq_take[liq_take['direction'] == 'sell'].groupby('price').agg({'volume': 'sum'})
+    liq_take_buy = liq_take[liq_take['direction'] == 'buy'].groupby('price').agg({'volume': 'sum'}).rename(
+        columns={'volume': 'take_buy_size'})
+    liq_take_sell = liq_take[liq_take['direction'] == 'sell'].groupby('price').agg({'volume': 'sum'}).rename(
+        columns={'volume': 'take_sell_size'})
 
-    liq_take_buy.columns = ['take_buy_size']
-    liq_take_sell.columns = ['take_sell_size']
     liq_take = pd.merge(liq_take_buy, liq_take_sell, left_index=True, right_index=True, how='outer').fillna(0)
 
     # Merge
