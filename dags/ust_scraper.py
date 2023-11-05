@@ -14,7 +14,7 @@ Upc_Table_Cols = ['version', 'type', 'term', 'reopening', 'cusip', 'offeringAmou
 def ust_scraper():
     writetime = datetime.utcnow()
 
-    conn = sqlite3.connect('/tmp/ust.db')
+    conn = sqlite3.connect('/tmp/scraper/ust.db')
     create_table_query = '''
         CREATE TABLE IF NOT EXISTS auctioned (
             "version" TIMESTAMP,
