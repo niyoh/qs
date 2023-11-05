@@ -7,16 +7,6 @@ import sqlite3
 from datetime import datetime
 
 
-
-def process(instrument, writetime):
-    if not instrument['Term'].str.match(r'.+-Week|.+-Day|.+-Year').all():
-        raise ValueError(f"The string '{instrument[product]}' does not match the expected format.")
-    if not instrument['CUSIP'].str.match(r'^[A-Za-z0-9]{9}$').all():
-        raise ValueError(f"The string '{instrument['CUSIP']}' does not match the expected format.")
-    instrument['Version'] = writetime
-    return instrument
-
-
 def ust_scraper():
     driver = webdriver.Firefox()
     driver.get('https://treasurydirect.gov/auctions/upcoming/')
@@ -61,31 +51,37 @@ def ust_scraper():
 
     wait = WebDriverWait(driver, 10)
 
-    auc_tbills = scrape_table(wait, 'institTableBills')
-    auc_tnotes = scrape_table(wait, 'institTableNotes')
-    auc_tbonds = scrape_table(wait, 'institTableBonds')
-    auc_tips = scrape_table(wait, 'institTableTIPS')
-    auc_frn = scrape_table(wait, 'institTableFRN')
+    auc_tables = []
+    for id in ['institTableBills', 'institTableNotes', 'institTableBonds', 'institTableTIPS', 'institTableFRN']:
+        t = scrape_table(wait, id)
+        auc_tables.append(process(t, writetime))
 
-    upc_tbills = scrape_table(wait, 'institTableBillsUpcoming')
-    upc_tnotes = scrape_table(wait, 'institTableNotesUpcoming')
-    upc_tbonds = scrape_table(wait, 'institTableBondsUpcoming')
-    upc_tips = scrape_table(wait, 'institTableTIPSUpcoming')
-    upc_frn = scrape_table(wait, 'institTableFRNUpcoming')
+    upc_tables = []
+    for id in ['institTableBillsUpcoming', 'institTableNotesUpcoming', 'institTableBondsUpcoming',
+               'institTableTIPSUpcoming', 'institTableFRNUpcoming']:
+        t = scrape_table(wait, id)
+        upc_tables.append(process(t, writetime))
 
-    auc_tbills = process(auc_tbills, writetime)
-    auc_tnotes = process(auc_tnotes, writetime)
-    upc_tbills = process(upc_tbills, writetime)
-    upc_tnotes = process(upc_tnotes, writetime)
+    for t in auc_tables:
+        t.to_sql('auctioned', conn, if_exists='append', index=False)
+    for t in upc_tables:
+        t.to_sql('upcoming', conn, if_exists='append', index=False)
 
-    auc_tbills.to_sql('auctioned', conn, if_exists='append', index=False)
-    auc_tnotes.to_sql('auctioned', conn, if_exists='append', index=False)
-    upc_tbills.to_sql('upcoming', conn, if_exists='append', index=False)
-    upc_tnotes.to_sql('upcoming', conn, if_exists='append', index=False)
     conn.close()
+
+    sec_detail = 'https://treasurydirect.gov/auctions/auction-query/?cusip='
 
     # Close the browser
     driver.quit()
+
+
+def process(instrument, writetime):
+    if not instrument['Term'].str.match(r'.+-Week|.+-Day|.+-Year').all():
+        raise ValueError(f"The string '{instrument[product]}' does not match the expected format.")
+    if not instrument['CUSIP'].str.match(r'^[A-Za-z0-9]{9}$').all():
+        raise ValueError(f"The string '{instrument['CUSIP']}' does not match the expected format.")
+    instrument['Version'] = writetime
+    return instrument
 
 
 def scrape_table(driver, id):
