@@ -12,7 +12,7 @@
   
 <img width="724" alt="image" src="https://github.com/niyoh/qs/assets/6595331/56252075-c036-4ed5-bd38-45de2b607e6a">
 
-### Summary Data:
+### Aggregate Bin Data:
 - grouped by time-bucket
 - open & high & low & close, etc
 
