@@ -22,15 +22,20 @@ def equity_tick_data():
     taq = taq.sort_values(['time', 'type'])
 
     # Group into 5-minute buckets
+
     # Summary
-    ohlc_agg = trd.resample('5T', label='right').agg({'price': 'ohlc', 'volume': 'sum'})
-    ohlc_agg['vwap'] = ohlc_agg.apply(lambda x: (x['price']['close'] * x['volume']).sum() / x['volume'].sum(), axis=1)
-    ohlc_agg['twap'] = ohlc_agg['price']['close'].mean()
-    ohlc_agg['n_trd'] = trd.groupby(pd.Grouper(freq='5T', label='right'))['price'].count()
-    ohlc_agg['n_quo'] = qte.groupby(pd.Grouper(freq='5T', label='right'))['bid_price'].count()
+    trd_grouped = trd.resample('5T', label='right')
+    qte_grouped = qte.resample('5T', label='right')
+    trd_agg = trd_grouped.agg({'price': 'ohlc', 'volume': 'sum'}).droplevel(0, 1)
+    trd_agg['vwap'] = trd_grouped.apply(lambda x: (x['price'] * x['volume']).sum() / x['volume'].sum())
+    trd_agg['twap'] = trd_grouped['price'].mean()
+    trd_agg['n_trd'] = trd_grouped['price'].count()
+    qte_agg = qte_grouped['bid_price'].count().rename('n_quo')
     for field in ['bid_price', 'bid_size', 'ask_price', 'ask_size']:
-        ohlc_agg[field] = qte.groupby(pd.Grouper(freq='5T', label='right')).apply(
+        qte_agg[field] = qte_grouped.apply(
             lambda x: x[field].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
+    ohlc_agg = pd.merge(trd_agg, qte_agg, left_index=True, right_index=True, how='outer')
+
     # Liquidity Flow Data
     liq_agg = taq.groupby(pd.Grouper(freq='5T', label='right')).apply(process_bucket)
 
