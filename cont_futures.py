@@ -3,9 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger()
+
 
 def near_exp_continuous_futures(full_ref_trd: pd.DataFrame, code: str, n: int):
     ref_trd = full_ref_trd.query(f"fut_code == '{code}'")
+    if len(ref_trd) == 0:
+        logger.warning(f'no trade & refs for future: {code}')
+
     ref_trd['delist_mth'] = ref_trd['delist_date'].dt.month
 
     # rank c1
@@ -35,18 +41,21 @@ def near_exp_continuous_futures(full_ref_trd: pd.DataFrame, code: str, n: int):
     ref_trd = ref_trd[~ref_trd['series'].isna()]
 
     # tables: 1) trade_date -> px  2) trade_date -> ref
-    if_px = ref_trd.pivot(index='trade_date', columns='series', values='close')
-    if_ref = ref_trd.pivot(index='trade_date', columns='series', values='ts_code')
+    px = ref_trd.pivot(index='trade_date', columns='series', values='close')
+    ref = ref_trd.pivot(index='trade_date', columns='series', values='ts_code')
 
     # forward fill price for gaps in c2,c3
-    if_px.columns.map(lambda x: if_px[x].ffill(inplace=True))
+    px.columns.map(lambda x: px[x].ffill(inplace=True))
 
-    px_adj, roll_dates = hist_adj(if_ref, if_px)
-    visualize('IF', if_px, px_adj, roll_dates)
+    px_adj, roll_dates = hist_adj(ref, px)
+    return px, px_adj, roll_dates
 
 
 def most_active_continuous_futures(full_ref_trd: pd.DataFrame, code: str, n: int):
     ref_trd = full_ref_trd.query(f"fut_code == '{code}'")
+    if len(ref_trd) == 0:
+        logger.warning(f'no trade & refs for future: {code}')
+
     ref_trd['delist_mth'] = ref_trd['delist_date'].dt.month
 
     # rank
@@ -90,7 +99,7 @@ def most_active_continuous_futures(full_ref_trd: pd.DataFrame, code: str, n: int
     px.columns.map(lambda x: px[x].ffill(inplace=True))
 
     px_adj, roll_dates = hist_adj(ref, px)
-    visualize('P', px, px_adj, roll_dates)
+    return px, px_adj, roll_dates
 
 
 def preprocess(ref: pd.DataFrame, trd: pd.DataFrame):
@@ -149,5 +158,8 @@ if __name__ == '__main__':
 
     ref_trd = preprocess(fut_ref, fut_trd)
 
-    near_exp_continuous_futures(ref_trd, 'IF', n=3)
-    most_active_continuous_futures(ref_trd, 'P', n=3)
+    if_px, if_px_adj, if_roll_dates = near_exp_continuous_futures(ref_trd, 'IF', n=3)
+    p_px, p_px_adj, p_roll_dates = most_active_continuous_futures(ref_trd, 'P', n=3)
+
+    visualize('IF', if_px, if_px_adj, if_roll_dates)
+    visualize('P', p_px, p_px_adj, p_roll_dates)

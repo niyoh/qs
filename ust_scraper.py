@@ -3,6 +3,12 @@ import requests
 import sqlite3
 from datetime import datetime
 
+Types = ['Bill', 'Note', 'Bond', 'TIPS', 'FRN']
+Auc_Table_Cols = ['version', 'type', 'term', 'reopening', 'cusip', 'issueDate', 'highYield', 'highDiscountMargin',
+                  'interestRate', 'highPrice', 'blob']
+Upc_Table_Cols = ['version', 'type', 'term', 'reopening', 'cusip', 'offeringAmount', 'announcementDate',
+                  'auctionDate', 'issueDate', 'blob']
+
 
 def ust_scraper():
     writetime = datetime.utcnow()
@@ -23,8 +29,6 @@ def ust_scraper():
             "blob" TEXT
         );
     '''
-    auc_table_cols = ['version', 'type', 'term', 'reopening', 'cusip', 'issueDate', 'highYield', 'highDiscountMargin',
-                      'interestRate', 'highPrice', 'blob']
     conn.execute(create_table_query)
     create_table_query = '''
         CREATE TABLE IF NOT EXISTS upcoming (
@@ -40,26 +44,22 @@ def ust_scraper():
             "blob" TEXT
         );
     '''
-    upc_table_cols = ['version', 'type', 'term', 'reopening', 'cusip', 'offeringAmount', 'announcementDate',
-                      'auctionDate', 'issueDate', 'blob']
     conn.execute(create_table_query)
 
-    types = ['Bill', 'Note', 'Bond', 'TIPS', 'FRN']
-
     auc_tables = []
-    for p in types:
+    for p in Types:
         t = scrape_auctioned(p)
         auc_tables.append(process(t, writetime))
 
     upc_tables = []
-    for p in types:
+    for p in Types:
         t = scrape_upcoming(p)
         upc_tables.append(process(t, writetime))
 
     for t in auc_tables:
-        t[auc_table_cols].to_sql('auctioned', conn, if_exists='append', index=False)
+        t[Auc_Table_Cols].to_sql('auctioned', conn, if_exists='append', index=False)
     for t in upc_tables:
-        t[upc_table_cols].to_sql('upcoming', conn, if_exists='append', index=False)
+        t[Upc_Table_Cols].to_sql('upcoming', conn, if_exists='append', index=False)
 
     conn.close()
 
