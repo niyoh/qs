@@ -8,7 +8,7 @@ from datetime import datetime
 
 
 def ust_scraper():
-    driver = webdriver.Firefox()
+    driver = webdriver.Chrome()
     driver.get('https://treasurydirect.gov/auctions/upcoming/')
 
     writetime = datetime.utcnow()
