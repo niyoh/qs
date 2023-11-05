@@ -29,7 +29,7 @@ scraper_dag = DAG(
 
 task_scrape = PythonOperator(
     task_id='scrape',
-    python_callable=ust_scraper.ust_scraper(),
+    python_callable=ust_scraper.ust_scraper,
     dag=scraper_dag
 )
 
