@@ -23,17 +23,16 @@ def equity_tick_data():
 
     # Group into 5-minute buckets
 
-    # Summary
+    # Aggregate Bin Data
     trd_grouped = trd.resample('5T', label='right')
     qte_grouped = qte.resample('5T', label='right')
     trd_agg = trd_grouped.agg({'price': 'ohlc', 'volume': 'sum'}).droplevel(0, 1)
     trd_agg['vwap'] = trd_grouped.apply(lambda x: (x['price'] * x['volume']).sum() / x['volume'].sum())
     trd_agg['twap'] = trd_grouped['price'].mean()
     trd_agg['n_trd'] = trd_grouped['price'].count()
-    qte_agg = qte_grouped['bid_price'].count().rename('n_quo')
-    for field in ['bid_price', 'bid_size', 'ask_price', 'ask_size']:
-        qte_agg[field] = qte_grouped.apply(
-            lambda x: x[field].dropna().iloc[-1] if not x['bid_price'].dropna().empty else np.nan)
+    qte_agg = qte_grouped[['bid_price', 'bid_size', 'ask_price', 'ask_size']].last()
+    qte_agg['n_quo'] = qte_grouped['bid_price'].count().values
+
     ohlc_agg = pd.merge(trd_agg, qte_agg, left_index=True, right_index=True, how='outer')
 
     # Liquidity Flow Data
